@@ -113,7 +113,7 @@ struct ExampleDtPass : public Pass
 								node.append_arg(enqueue(driver));
 							}
 						} else {
-							DriveChunkWire whole_wire(wire_chunk.wire, 0, wire_chunk.width);
+							DriveChunkWire whole_wire(wire_chunk.wire, 0, wire_chunk.wire->width);
 							node.set_function(ExampleFn(ID($$slice), {{ID(offset), wire_chunk.offset}, {ID(width), wire_chunk.width}}));
 							node.append_arg(enqueue(whole_wire));
 						}
@@ -145,7 +145,7 @@ struct ExampleDtPass : public Pass
 
 						} else {
 							DriveChunkPort whole_port(port_chunk.cell, port_chunk.port, 0, GetSize(port_chunk.cell->connections().at(port_chunk.port)));
-							node.set_function(ID($$buf));
+							node.set_function(ExampleFn(ID($$slice), {{ID(offset), port_chunk.offset}}));
 							node.append_arg(enqueue(whole_port));
 						}
 					} else if (chunk.is_constant()) {
@@ -193,27 +193,27 @@ struct ExampleDtPass : public Pass
 					log("\n");
 				}
 			}, /* sources_first */ true);
-			compute_graph.permute(perm);
+			//compute_graph.permute(perm);
 
 
 			// Forward $$buf unless we have a name in the sparse attribute
-			std::vector<int> alias;
-			perm.clear();
+			// std::vector<int> alias;
+			// perm.clear();
 
-			for (int i = 0; i < compute_graph.size(); ++i)
-			{
-				if (compute_graph[i].function().name == ID($$buf) && !compute_graph[i].has_sparse_attr() && compute_graph[i].arg(0).index() < i)
-				{
+			// for (int i = 0; i < compute_graph.size(); ++i)
+			// {
+			// 	if (compute_graph[i].function().name == ID($$buf) && !compute_graph[i].has_sparse_attr() && compute_graph[i].arg(0).index() < i)
+			// 	{
 
-					alias.push_back(alias[compute_graph[i].arg(0).index()]);
-				}
-				else
-				{
-					alias.push_back(GetSize(perm));
-					perm.push_back(i);
-				}
-			}
-			compute_graph.permute(perm, alias);
+			// 		alias.push_back(alias[compute_graph[i].arg(0).index()]);
+			// 	}
+			// 	else
+			// 	{
+			// 		alias.push_back(GetSize(perm));
+			// 		perm.push_back(i);
+			// 	}
+			// }
+			// compute_graph.permute(perm, alias);
 
 			// Dump the compute graph
 			for (int i = 0; i < compute_graph.size(); ++i)
