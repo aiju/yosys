@@ -49,9 +49,12 @@ Signal<n> $mux(Signal<n> const& a, Signal<n> const &b, Signal<1> const &s)
 }
 
 template<size_t n>
-Signal<1> $not(Signal<n> const& a)
+Signal<n> $not(Signal<n> const& a)
 {
-    return { !as_bool(a) };
+    Signal<n> ret;
+    for(size_t i = 0; i < n; i++)
+        ret[i] = !a[i];
+    return ret;
 }
 
 template<size_t n>
@@ -63,8 +66,7 @@ Signal<1> $reduce_or(Signal<n> const& a)
 template<size_t n>
 Signal<1> $reduce_and(Signal<n> const& a)
 {
-    size_t i;
-    for(i = 0; i < n; i++)
+    for(size_t i = 0; i < n; i++)
         if(!a[i])
             return { false };
     return { true };
