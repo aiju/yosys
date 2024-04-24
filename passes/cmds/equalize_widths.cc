@@ -29,8 +29,7 @@ struct EqualizeWidthsPass : public Pass
                     int y_width = cell->parameters[ID(Y_WIDTH)].as_int();
                     bool a_signed = cell->parameters[ID(A_SIGNED)].as_bool();
                     bool b_signed = cell->parameters[ID(B_SIGNED)].as_bool();
-                    int width = max(a_width, b_width);
-                    assert(y_width == width);
+                    int width = y_width;
                     if(a_width != width){
                         SigSpec a = cell->getPort(ID(A));
                         a.extend_u0(width, a_signed);
@@ -44,7 +43,7 @@ struct EqualizeWidthsPass : public Pass
                         cell->setParam(ID(B_WIDTH), width);
                     }
                 }
-                if(cell->type.in({ID($logic_or), ID($logic_and), ID($or), ID($and)})){
+                if(cell->type.in({ID($logic_or), ID($logic_and)})){
                     int a_width = cell->parameters[ID(A_WIDTH)].as_int();
                     int b_width = cell->parameters[ID(B_WIDTH)].as_int();
                     bool a_signed = cell->parameters[ID(A_SIGNED)].as_bool();

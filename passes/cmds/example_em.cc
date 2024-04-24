@@ -7,20 +7,20 @@ USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
 
 const char *reserved_keywords[] = {
-	"alignas","alignof","and","and_eq","asm","atomic_cancel","atomic_commit","atomic_commit",
-	"atomic_noexcept","auto","bitand","bitor","bool","break","case","case",
-	"catch","char","char16_t","char32_t","char8_t","class","co_await","co_await",
-	"co_return","co_yield","compl","concept","const","const_cast","consteval","consteval",
-	"constexpr","constinit","continue","decltype","default","delete","delete",
-	"do","double","dynamic_cast","else","enum","explicit","export","export",
-	"extern","false","float","for","friend","goto","if","inline","inline",
-	"int","long","mutable","namespace","new","noexcept","not","not_eq","not_eq",
-	"nullptr","operator","or","or_eq","private","protected","public","public",
-	"reflexpr","register","reinterpret_cast","requires","return","short","short",
-	"signed","sizeof","static","static_assert","static_cast","struct","struct",
-	"switch","synchronized","template","this","thread_local","throw","throw",
-	"true","try","typedef","typeid","typename","union","unsigned","unsigned",
-	"using","virtual","void","volatile","wchar_t","while","xor","xor","xor_eq",
+	"alignas","alignof","and","and_eq","asm","atomic_cancel","atomic_commit",
+	"atomic_noexcept","auto","bitand","bitor","bool","break","case",
+	"catch","char","char16_t","char32_t","char8_t","class","co_await",
+	"co_return","co_yield","compl","concept","const","const_cast","consteval",
+	"constexpr","constinit","continue","decltype","default","delete",
+	"do","double","dynamic_cast","else","enum","explicit","export",
+	"extern","false","float","for","friend","goto","if","inline",
+	"int","long","mutable","namespace","new","noexcept","not","not_eq",
+	"nullptr","operator","or","or_eq","private","protected","public",
+	"reflexpr","register","reinterpret_cast","requires","return","short",
+	"signed","sizeof","static","static_assert","static_cast","struct",
+	"switch","synchronized","template","this","thread_local","throw",
+	"true","try","typedef","typeid","typename","union","unsigned",
+	"using","virtual","void","volatile","wchar_t","while","xor","xor_eq",
 	nullptr
 };
 
@@ -270,7 +270,7 @@ struct ExampleEmPass : public Pass
 							fn.parameters = {{ID(WIDTH), a_width}};
 							if(!a_signed && !cell->type.in({ID($eq), ID($ne)}))
 								fn.name = IdString("$u" + cell->type.str().substr(1));
-						}else if(cell->type.in({ID($or), ID($and), ID($xor)})){
+						}else if(cell->type.in({ID($or), ID($and), ID($xor), ID($add), ID($sub)})){
 							int a_width = cell->parameters[ID(A_WIDTH)].as_int();
 							int b_width = cell->parameters[ID(B_WIDTH)].as_int();
 							int y_width = cell->parameters[ID(Y_WIDTH)].as_int();
