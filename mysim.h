@@ -79,6 +79,19 @@ Signal<n> $not(Signal<n> const& a)
 }
 
 template<size_t n>
+Signal<n> $neg(Signal<n> const& a)
+{
+    Signal<n> ret;
+    bool carry = true;
+    for(size_t i = 0; i < n; i++) {
+        int r = !a[i] + carry;
+        ret[i] = (r & 1) != 0;
+        carry = (r >> 1) != 0;
+    }
+    return ret;
+}
+
+template<size_t n>
 Signal<1> $reduce_or(Signal<n> const& a)
 {
     return { as_bool(a) };
@@ -222,6 +235,40 @@ Signal<n> $shl(Signal<na> const& a, Signal<nb> const &b)
             std::copy(a.begin(), a.begin() + (n - amount), ret.begin() + amount);
         else
             std::copy(a.begin(), a.end(), ret.begin() + amount);
+    }
+    return ret;
+}
+
+template<size_t n, size_t nb>
+Signal<n> $shr(Signal<n> const& a, Signal<nb> const &b)
+{
+    if(nb >= sizeof(int) * 8 - 1)
+        for(size_t i = sizeof(int) * 8 - 1; i < nb; i++)
+            assert(!b[i]);
+    size_t amount = as_int(b);
+    Signal<n> ret;
+    for (size_t i = 0; i < n; i++) {
+        if(i + amount < n)
+            ret[i] = a[i + amount];
+        else
+            ret[i] = false;
+    }
+    return ret;
+}
+
+template<size_t n, size_t nb>
+Signal<n> $asr(Signal<n> const& a, Signal<nb> const &b)
+{
+    if(nb >= sizeof(int) * 8 - 1)
+        for(size_t i = sizeof(int) * 8 - 1; i < nb; i++)
+            assert(!b[i]);
+    size_t amount = as_int(b);
+    Signal<n> ret;
+    for (size_t i = 0; i < n; i++) {
+        if(i + amount < n)
+            ret[i] = a[i + amount];
+        else
+            ret[i] = a[n - 1];
     }
     return ret;
 }

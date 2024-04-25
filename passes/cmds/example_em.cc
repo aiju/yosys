@@ -154,6 +154,7 @@ public:
 	T bitwise_or(T a, T b, int width) { return graph.add(CppFunction(ID($or), width), 0, std::array<T, 2>{a, b}); }
 	T bitwise_xor(T a, T b, int width) { return graph.add(CppFunction(ID($xor), width), 0, std::array<T, 2>{a, b}); }
 	T bitwise_not(T a, int width) { return graph.add(CppFunction(ID($not), width), 0, std::array<T, 1>{a}); }
+	T neg(T a, int width) { return graph.add(CppFunction(ID($neg), width), 0, std::array<T, 1>{a}); }
 	T mux(T a, T b, T s, int width) { return graph.add(CppFunction(ID($mux), width), 0, std::array<T, 3>{a, b, s}); }
 	T pmux(T a, T b, T s, int width, int) { return graph.add(CppFunction(ID($pmux), width), 0, std::array<T, 3>{a, b, s}); }
 	T reduce_and(T a, int) { return graph.add(CppFunction(ID($reduce_and), 1), 0, std::array<T, 1>{a}); }
@@ -165,7 +166,9 @@ public:
 	T ge(T a, T b, int) { return graph.add(CppFunction(ID($ge), 1), 0, std::array<T, 2>{a, b}); }
 	T ugt(T a, T b, int) { return graph.add(CppFunction(ID($ugt), 1), 0, std::array<T, 2>{a, b}); }
 	T uge(T a, T b, int) { return graph.add(CppFunction(ID($uge), 1), 0, std::array<T, 2>{a, b}); }
-	T shl(T a, int, T b, int, int y_width) { return graph.add(CppFunction(ID($shl), y_width, {{ID(WIDTH), y_width}}), 0, std::array<T, 2>{a, b}); }
+	T logical_shift_left(T a, T b, int y_width, int) { return graph.add(CppFunction(ID($shl), y_width, {{ID(WIDTH), y_width}}), 0, std::array<T, 2>{a, b}); }
+	T logical_shift_right(T a, T b, int y_width, int) { return graph.add(CppFunction(ID($shr), y_width, {{ID(WIDTH), y_width}}), 0, std::array<T, 2>{a, b}); }
+	T arithmetic_shift_right(T a, T b, int y_width, int) { return graph.add(CppFunction(ID($asr), y_width, {{ID(WIDTH), y_width}}), 0, std::array<T, 2>{a, b}); }
 
 	T constant(RTLIL::Const value) {
 		return graph.add(CppFunction(ID($$const), value.size(), {{ID(value), value}}), 0);
@@ -207,6 +210,19 @@ public:
 template <class T, class Factory>
 class CellSimplifier {
 	Factory &factory;
+	T reduce_shift_width(T b, int b_width, int y_width, int &reduced_b_width) {
+		log_assert(y_width > 0);
+		int new_width = sizeof(int) * 8 - __builtin_clz(y_width);
+		if (b_width <= new_width) {
+			reduced_b_width = b_width;
+			return b;
+		} else {
+			reduced_b_width = new_width;
+			T lower_b = factory.slice(b, b_width, 0, new_width);
+			T overflow = factory.gt(b, factory.constant(RTLIL::Const(y_width, b_width)), b_width);
+			return factory.mux(lower_b, factory.constant(RTLIL::Const(y_width, new_width)), overflow, new_width);
+		}
+	}
 public:
 	T reduce_or(T a, int width) {
 		if (width == 1)
@@ -220,6 +236,21 @@ public:
 			return factory.slice(a, in_width, 0, out_width);
 		return factory.extend(a, in_width, out_width, is_signed);
 	}
+	T logical_shift_left(T a, T b, int y_width, int b_width) {
+		int reduced_b_width;
+		T reduced_b = reduce_shift_width(b, b_width, y_width, reduced_b_width);
+		return factory.logical_shift_left(a, reduced_b, y_width, reduced_b_width);
+	}
+	T logical_shift_right(T a, T b, int y_width, int b_width) {
+		int reduced_b_width;
+		T reduced_b = reduce_shift_width(b, b_width, y_width, reduced_b_width);
+		return factory.logical_shift_right(a, reduced_b, y_width, reduced_b_width);
+	}
+	T arithmetic_shift_right(T a, T b, int y_width, int b_width) {
+		int reduced_b_width;
+		T reduced_b = reduce_shift_width(b, b_width, y_width, reduced_b_width);
+		return factory.arithmetic_shift_right(a, reduced_b, y_width, reduced_b_width);
+	}
 	CellSimplifier(Factory &f) : factory(f) {}
 	T handle(IdString cellType, dict<IdString, Const> parameters, dict<IdString, T> inputs)
 	{
@@ -228,9 +259,10 @@ public:
 		int y_width = parameters.at(ID(Y_WIDTH), Const(-1)).as_int();
 		bool a_signed = parameters.at(ID(A_SIGNED), Const(0)).as_bool();
 		bool b_signed = parameters.at(ID(B_SIGNED), Const(0)).as_bool();
-		if(cellType.in({ID($add), ID($sub), ID($and), ID($or), ID($xor)})){
-			T a = extend(inputs.at(ID(A)), a_width, y_width, a_signed);
-			T b = extend(inputs.at(ID(B)), b_width, y_width, b_signed);
+		if(cellType.in({ID($add), ID($sub), ID($and), ID($or), ID($xor), ID($xnor)})){
+			bool is_signed = a_signed && b_signed;
+			T a = extend(inputs.at(ID(A)), a_width, y_width, is_signed);
+			T b = extend(inputs.at(ID(B)), b_width, y_width, is_signed);
 			if(cellType == ID($add))
 				return factory.add(a, b, y_width);
 			else if(cellType == ID($sub))
@@ -241,25 +273,27 @@ public:
 				return factory.bitwise_or(a, b, y_width);
 			else if(cellType == ID($xor))
 				return factory.bitwise_xor(a, b, y_width);
+			else if(cellType == ID($xnor))
+				return factory.bitwise_not(factory.bitwise_xor(a, b, y_width), y_width);
 			else
 				log_abort();
-		}else if(cellType.in({ID($eq), ID($ne), ID($le), ID($lt), ID($ge), ID($gt)})){
-			int width = max(a_width, b_width) + (a_signed != b_signed);
-			bool sign = a_signed || b_signed;
-			T a = extend(inputs.at(ID(A)), a_width, width, a_signed);
-			T b = extend(inputs.at(ID(B)), b_width, width, b_signed);
-			if(cellType == ID($eq))
+		}else if(cellType.in({ID($eq), ID($ne), ID($eqx), ID($nex), ID($le), ID($lt), ID($ge), ID($gt)})){
+			bool is_signed = a_signed && b_signed;
+			int width = max(a_width, b_width);
+			T a = extend(inputs.at(ID(A)), a_width, width, is_signed);
+			T b = extend(inputs.at(ID(B)), b_width, width, is_signed);
+			if(cellType.in({ID($eq), ID($eqx)}))
 				return extend(factory.eq(a, b, width), 1, y_width, false);
-			else if(cellType == ID($ne))
+			if(cellType.in({ID($ne), ID($nex)}))
 				return extend(factory.ne(a, b, width), 1, y_width, false);
 			else if(cellType == ID($lt))
-				return extend(sign ? factory.gt(b, a, width) : factory.ugt(b, a, width), 1, y_width, false);
+				return extend(is_signed ? factory.gt(b, a, width) : factory.ugt(b, a, width), 1, y_width, false);
 			else if(cellType == ID($le))
-				return extend(sign ? factory.ge(b, a, width) : factory.uge(b, a, width), 1, y_width, false);
+				return extend(is_signed ? factory.ge(b, a, width) : factory.uge(b, a, width), 1, y_width, false);
 			else if(cellType == ID($gt))
-				return extend(sign ? factory.gt(a, b, width) : factory.ugt(a, b, width), 1, y_width, false);
+				return extend(is_signed ? factory.gt(a, b, width) : factory.ugt(a, b, width), 1, y_width, false);
 			else if(cellType == ID($ge))
-				return extend(sign ? factory.ge(a, b, width) : factory.uge(a, b, width), 1, y_width, false);
+				return extend(is_signed ? factory.ge(a, b, width) : factory.uge(a, b, width), 1, y_width, false);
 			else
 				log_abort();
 		}else if(cellType.in({ID($logic_or), ID($logic_and)})){
@@ -270,6 +304,11 @@ public:
 		}else if(cellType == ID($not)){
 			T a = extend(inputs.at(ID(A)), a_width, y_width, a_signed);
 			return factory.bitwise_not(a, y_width);
+		}else if(cellType == ID($pos)){
+			return extend(inputs.at(ID(A)), a_width, y_width, a_signed);
+		}else if(cellType == ID($neg)){
+			T a = extend(inputs.at(ID(A)), a_width, y_width, a_signed);
+			return factory.neg(a, y_width);
 		}else if(cellType == ID($logic_not)){
 			T a = reduce_or(inputs.at(ID(A)), a_width);
 			T y = factory.bitwise_not(a, 1);
@@ -284,8 +323,31 @@ public:
 			T a = factory.reduce_xor(inputs.at(ID(A)), a_width);
 			T y = cellType == ID($reduce_xnor) ? factory.bitwise_not(a, 1) : a;
 			return extend(y, 1, y_width, false);
-		}else if(cellType == ID($shl)){
-			return factory.shl(inputs.at(ID(A)), a_width, inputs.at(ID(B)), b_width, y_width);
+		}else if(cellType == ID($shl) || cellType == ID($sshl)){
+			T a = extend(inputs.at(ID(A)), a_width, y_width, a_signed);
+			T b = inputs.at(ID(B));
+			return logical_shift_left(a, b, y_width, b_width);
+		}else if(cellType == ID($shr) || cellType == ID($sshr)){
+			int width = max(a_width, y_width);
+			T a = extend(inputs.at(ID(A)), a_width, width, a_signed);
+			T b = inputs.at(ID(B));
+			T y = a_signed && cellType == ID($sshr) ?
+				arithmetic_shift_right(a, b, width, b_width) :
+				logical_shift_right(a, b, width, b_width);
+			return extend(y, width, y_width, a_signed);
+		}else if(cellType == ID($shiftx) || cellType == ID($shift)){
+			int width = max(a_width, y_width);
+			T a = extend(inputs.at(ID(A)), a_width, width, cellType == ID($shift) && a_signed);
+			T b = inputs.at(ID(B));
+			T shr = logical_shift_right(a, b, width, b_width);
+			if(b_signed) {
+				T sign_b = factory.slice(b, b_width, b_width - 1, 1);
+				T shl = logical_shift_left(a, factory.neg(b, b_width), width, b_width);
+				T y = factory.mux(shr, shl, sign_b, width);
+				return extend(y, width, y_width, false);
+			} else {
+				return extend(shr, width, y_width, false);
+			}
 		}else if(cellType == ID($mux)){
 			int width = parameters.at(ID(WIDTH)).as_int();
 			return factory.mux(inputs.at(ID(A)), inputs.at(ID(B)), inputs.at(ID(S)), width);
@@ -293,6 +355,14 @@ public:
 			int width = parameters.at(ID(WIDTH)).as_int();
 			int s_width = parameters.at(ID(S_WIDTH)).as_int();
 			return factory.pmux(inputs.at(ID(A)), inputs.at(ID(B)), inputs.at(ID(S)), width, s_width);
+		}else if(cellType == ID($concat)){
+			T a = inputs.at(ID(A));
+			T b = inputs.at(ID(B));
+			return factory.concat(a, a_width, b, b_width);
+		}else if(cellType == ID($slice)){
+			int offset = parameters.at(ID(OFFSET)).as_int();
+			T a = inputs.at(ID(A));
+			return factory.slice(a, a_width, offset, y_width);
 		}else{
 			log_error("unhandled cell in CellSimplifier %s\n", cellType.c_str());
 		}
