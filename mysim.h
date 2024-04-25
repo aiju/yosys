@@ -13,13 +13,34 @@ Signal<n> slice(Signal<m> const& a, size_t offset)
 }
 
 template<size_t n>
-Signal<n> $const(int val)
+Signal<n> $const(uint32_t val)
 {
     size_t i;
     Signal<n> ret;
 
     for(i = 0; i < n; i++)
-        ret[i] = val & (1<<i);
+        if(i < 32)
+            ret[i] = val & (1<<i);
+        else
+            ret[i] = false;
+    return ret;
+}
+
+template<size_t n>
+Signal<n> $const(std::initializer_list<uint32_t> vals)
+{
+    size_t k, i;
+    Signal<n> ret;
+
+    k = 0;
+    for (auto val : vals) {
+        for(i = 0; i < 32; i++)
+            if(i + k < n)
+                ret[i + k] = val & (1<<i);
+        k += 32;
+    }
+    for(; k < n; k++)
+        ret[k] = false;
     return ret;
 }
 
@@ -33,11 +54,11 @@ bool as_bool(Signal<n> sig)
 }
 
 template<size_t n>
-int as_int(Signal<n> sig)
+uint32_t as_int(Signal<n> sig)
 {
-    int ret = 0;
+    uint32_t ret = 0;
     for(int i = 0; i < n; i++)
-        if(sig[i])
+        if(sig[i] && i < 32)
             ret |= 1<<i;
     return ret;
 }
@@ -255,5 +276,27 @@ auto concat(Signal<n> const& a, Ts... args)
     Signal<n + b.size()> ret;
     std::copy(b.begin(), b.end(), ret.begin() + a.size());
     std::copy(a.begin(), a.end(), ret.begin());
+    return ret;
+}
+
+template<size_t n, size_t m>
+Signal<n> $zero_extend(Signal<m> const& a)
+{
+    assert(n >= m);
+    Signal<n> ret;
+    std::copy(a.begin(), a.end(), ret.begin());
+    for(size_t i = m; i < n; i++)
+        ret[i] = false;
+    return ret;
+}
+
+template<size_t n, size_t m>
+Signal<n> $sign_extend(Signal<m> const& a)
+{
+    assert(n >= m);
+    Signal<n> ret;
+    std::copy(a.begin(), a.end(), ret.begin());
+    for(size_t i = m; i < n; i++)
+        ret[i] = a[m-1];
     return ret;
 }
